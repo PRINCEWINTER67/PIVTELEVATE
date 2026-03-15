@@ -2806,12 +2806,12 @@ const runBugChecks=()=>{
                 setTimeout(()=>setSecurityBanner(null),2600);
             };
 
-            const getSessionFingerprint=()=>{
+            const getSessionFingerprint=async()=>{
                 const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
                 const ua=navigator.userAgent||'unknown';
                 const lang=navigator.language||'en';
                 const seed=`${tz}|${ua}|${lang}|${Math.floor((screen?.width||0)/100)}x${Math.floor((screen?.height||0)/100)}`;
-                return hashPassword(seed,'session-fingerprint-v2');
+                return await hashPassword(seed,'session-fingerprint-v2');
             };
 
             const generateSessionToken=()=>{
@@ -2820,7 +2820,11 @@ const runBugChecks=()=>{
                 return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
             };
 
-            const createTrustBadge=(username)=>hashPassword(`${username}-${getTrustedTime()}-${getSessionFingerprint()}`,'trust-badge').slice(0,14);
+            const createTrustBadge=async(username)=>{
+                const fp=await getSessionFingerprint();
+                const badgeHash=await hashPassword(`${username}-${getTrustedTime()}-${fp}`,'trust-badge');
+                return badgeHash.slice(0,14);
+            };
 
             const applySecurityModeFromAttempts=(username)=>{
                 try{
@@ -2951,8 +2955,8 @@ const runBugChecks=()=>{
                 };
                 
                 accountData.sessionToken=generateSessionToken();
-                accountData.sessionFingerprint=getSessionFingerprint();
-                accountData.trustBadge=createTrustBadge(username);
+                accountData.sessionFingerprint=await getSessionFingerprint();
+                accountData.trustBadge=await createTrustBadge(username);
 
                 // ── SAVE ACCOUNT FIRST (order matters) ──
                 const saveResult=S.set(`user-${username}-account`,JSON.stringify(accountData));
@@ -3111,7 +3115,7 @@ const runBugChecks=()=>{
                 a.lastLogin=new Date().toISOString();
                 a.loginCount=(a.loginCount||0)+1;
                 const nowIso=new Date().toISOString();
-                const fp=getSessionFingerprint();
+                const fp=await getSessionFingerprint();
                 const prevFp=a.sessionFingerprint||null;
                 const fingerprintChanged=Boolean(prevFp&&prevFp!==fp);
                 a.securityEvents=Array.isArray(a.securityEvents)?a.securityEvents:[];
@@ -3125,7 +3129,7 @@ const runBugChecks=()=>{
                 }
                 a.sessionFingerprint=fp;
                 a.sessionToken=generateSessionToken();
-                a.trustBadge=createTrustBadge(canonicalUsername);
+                a.trustBadge=await createTrustBadge(canonicalUsername);
                 if(profilePic)a.avatar=profilePic;
                 S.set(accountKey||`user-${canonicalUsername}-account`,JSON.stringify(a));
                 
@@ -3200,8 +3204,8 @@ const runBugChecks=()=>{
                         securityMode:'normal',
                         securityEvents:[{type:'account_recovered_via_otp',at:new Date().toISOString()}],
                         sessionToken:generateSessionToken(),
-                        sessionFingerprint:getSessionFingerprint(),
-                        trustBadge:createTrustBadge(otpUsername),
+                        sessionFingerprint:await getSessionFingerprint(),
+                        trustBadge:await createTrustBadge(otpUsername),
                         avatar:''
                     };
                     S.set(recoveryKey,JSON.stringify(recoveredAccount));
@@ -8238,7 +8242,7 @@ return shopItems.filter(item=>{
                                 </div>
 
                                 {!focusTimer?(
-                                    <>
+                                    <div>
                                         {/* Preset Selection — replaces free-form inputs */}
                                         <div className="bg-gray-700 rounded-xl p-6 mb-6">
                                             <h3 className="text-xl font-bold mb-2">⏱️ Choose Your Session</h3>
@@ -8346,7 +8350,7 @@ return shopItems.filter(item=>{
                                         <div className="mt-4 text-center text-sm text-gray-400">
                                             Sessions completed today: <span className="text-purple-400 font-bold">{focusSessions}</span>
                                         </div>
-                                    </>
+                                    </div>
                                 ):(
                                     /* Active Focus Session */
                                     <div className="text-center">
