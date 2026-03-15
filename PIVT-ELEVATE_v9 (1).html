@@ -2806,12 +2806,12 @@ const runBugChecks=()=>{
                 setTimeout(()=>setSecurityBanner(null),2600);
             };
 
-            const getSessionFingerprint=()=>{
+            const getSessionFingerprint=async()=>{
                 const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
                 const ua=navigator.userAgent||'unknown';
                 const lang=navigator.language||'en';
                 const seed=`${tz}|${ua}|${lang}|${Math.floor((screen?.width||0)/100)}x${Math.floor((screen?.height||0)/100)}`;
-                return hashPassword(seed,'session-fingerprint-v2');
+                return await hashPassword(seed,'session-fingerprint-v2');
             };
 
             const generateSessionToken=()=>{
@@ -2820,7 +2820,11 @@ const runBugChecks=()=>{
                 return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
             };
 
-            const createTrustBadge=(username)=>hashPassword(`${username}-${getTrustedTime()}-${getSessionFingerprint()}`,'trust-badge').slice(0,14);
+            const createTrustBadge=async(username)=>{
+                const fp=await getSessionFingerprint();
+                const badgeHash=await hashPassword(`${username}-${getTrustedTime()}-${fp}`,'trust-badge');
+                return badgeHash.slice(0,14);
+            };
 
             const applySecurityModeFromAttempts=(username)=>{
                 try{
@@ -2951,8 +2955,8 @@ const runBugChecks=()=>{
                 };
                 
                 accountData.sessionToken=generateSessionToken();
-                accountData.sessionFingerprint=getSessionFingerprint();
-                accountData.trustBadge=createTrustBadge(username);
+                accountData.sessionFingerprint=await getSessionFingerprint();
+                accountData.trustBadge=await createTrustBadge(username);
 
                 // ── SAVE ACCOUNT FIRST (order matters) ──
                 const saveResult=S.set(`user-${username}-account`,JSON.stringify(accountData));
@@ -3111,7 +3115,7 @@ const runBugChecks=()=>{
                 a.lastLogin=new Date().toISOString();
                 a.loginCount=(a.loginCount||0)+1;
                 const nowIso=new Date().toISOString();
-                const fp=getSessionFingerprint();
+                const fp=await getSessionFingerprint();
                 const prevFp=a.sessionFingerprint||null;
                 const fingerprintChanged=Boolean(prevFp&&prevFp!==fp);
                 a.securityEvents=Array.isArray(a.securityEvents)?a.securityEvents:[];
@@ -3125,7 +3129,7 @@ const runBugChecks=()=>{
                 }
                 a.sessionFingerprint=fp;
                 a.sessionToken=generateSessionToken();
-                a.trustBadge=createTrustBadge(canonicalUsername);
+                a.trustBadge=await createTrustBadge(canonicalUsername);
                 if(profilePic)a.avatar=profilePic;
                 S.set(accountKey||`user-${canonicalUsername}-account`,JSON.stringify(a));
                 
@@ -3200,8 +3204,8 @@ const runBugChecks=()=>{
                         securityMode:'normal',
                         securityEvents:[{type:'account_recovered_via_otp',at:new Date().toISOString()}],
                         sessionToken:generateSessionToken(),
-                        sessionFingerprint:getSessionFingerprint(),
-                        trustBadge:createTrustBadge(otpUsername),
+                        sessionFingerprint:await getSessionFingerprint(),
+                        trustBadge:await createTrustBadge(otpUsername),
                         avatar:''
                     };
                     S.set(recoveryKey,JSON.stringify(recoveredAccount));
@@ -7220,7 +7224,6 @@ Make sure the username is spelled correctly (it's case-insensitive). They must h
                             )}
                         </div>
                     </div>
-                </div>
             );
         }
 
@@ -8186,7 +8189,8 @@ Make sure the username is spelled correctly (it's case-insensitive). They must h
                                                 </div>
                                             </div>
                                         );
-                                    })() }
+                                        });
+                                    })()}
                                 </div>
                             </div>
                         </div>}
@@ -8238,7 +8242,7 @@ return shopItems.filter(item=>{
                                 </div>
 
                                 {!focusTimer?(
-                                    <>
+                                    <div>
                                         {/* Preset Selection — replaces free-form inputs */}
                                         <div className="bg-gray-700 rounded-xl p-6 mb-6">
                                             <h3 className="text-xl font-bold mb-2">⏱️ Choose Your Session</h3>
@@ -8346,7 +8350,7 @@ return shopItems.filter(item=>{
                                         <div className="mt-4 text-center text-sm text-gray-400">
                                             Sessions completed today: <span className="text-purple-400 font-bold">{focusSessions}</span>
                                         </div>
-                                    </>
+                                    </div>
                                 ):(
                                     /* Active Focus Session */
                                     <div className="text-center">
@@ -8499,7 +8503,6 @@ return shopItems.filter(item=>{
                                     </div>
                                     <button onClick={addGoal} className="w-full mt-4 py-3 rounded-xl font-bold bg-gradient-to-r from-blue-500 to-cyan-600 hover:opacity-90 transition-all">🤖 Create Goal (AI will calculate reward)</button>
                                 </div>
-                            </div>
 
                                 <div className="space-y-3">
                                     {goals.length===0?(<p className="text-gray-500 text-center py-8">No goals yet. Set one to get started!</p>):(goals.map(goal=>{const daysLeft=Math.ceil((new Date(goal.targetDate)-getTrustedTime())/(24*60*60*1000));const isOverdue=daysLeft<0;return(<div key={goal.id} className={`bg-gray-700 rounded-xl p-4 border-2 ${goal.completed?'border-green-500':isOverdue?'border-red-500':'border-blue-500'}`}><div className="flex items-start justify-between gap-4"><div className="flex-1"><div className="flex items-center gap-2 mb-2"><h4 className={`font-bold text-xl ${goal.completed?'line-through text-gray-500':''}`}>{goal.title}</h4><span className={`px-2 py-1 rounded text-xs font-bold ${getPriorityColor(goal.priority)} text-white`}>P{goal.priority}</span><span className="px-2 py-1 rounded text-xs font-bold bg-purple-600">{goal.category}</span></div><p className="text-sm text-gray-300 mb-3">{goal.description}</p><div className="flex items-center gap-4 mb-3"><div><p className="text-xs text-gray-400">AI Difficulty</p><p className="text-2xl font-bold text-yellow-400">{goal.aiDifficulty}/10 🤖</p></div><div><p className="text-xs text-gray-400">Reward</p><p className="text-2xl font-bold text-green-400">{goal.coinReward} 💰</p></div><div><p className="text-xs text-gray-400">Target Date</p><p className={`text-lg font-bold ${isOverdue?'text-red-400':daysLeft<=7?'text-orange-400':'text-blue-400'}`}>{isOverdue?`${Math.abs(daysLeft)}d overdue`:daysLeft===0?'Today!':`${daysLeft}d left`}</p></div></div>{!goal.completed&&(<div><div className="flex items-center justify-between mb-1"><p className="text-xs text-gray-400">Progress (cannot decrease)</p><p className="text-xs font-bold">{goal.progress}%</p></div><div className="h-2 bg-gray-800 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-blue-500 to-cyan-500" style={{width:`${Math.min(100,Math.max(0,goal.progress||0))}%`}}></div></div><input type="range" min="0" max="100" value={goal.progress} onChange={(e)=>updateGoalProgress(goal.id,parseInt(e.target.value))} className="w-full mt-2"/></div>)}</div><div className="flex flex-col gap-2">{goal.completed?(<div className="bg-green-600 px-6 py-3 rounded-xl font-bold text-center">✅ Done!</div>):(<button onClick={()=>completeGoal(goal.id)} className="px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-green-500 to-emerald-600 hover:opacity-90 transition-all">✓ Complete</button>)}<button onClick={()=>deleteGoal(goal.id)} className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-sm">🗑️ Delete</button></div></div></div>);}))}
@@ -9290,8 +9293,6 @@ return shopItems.filter(item=>{
 
                         {/* ── BANK MODAL ── */}
                         {/* ── END BANK MODAL ── */}
-                </div>
-                </div>
                 </div>
                 </div>
                 </>
